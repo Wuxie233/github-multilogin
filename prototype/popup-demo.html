@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GitHub MultiLogin — Popup Demo</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0d1117;
+      --bg-secondary: #161b22;
+      --bg-card: #21262d;
+      --bg-card-hover: #292e36;
+      --bg-input: #0d1117;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --accent-dim: rgba(99,102,241,0.15);
+      --success: #3fb950;
+      --success-dim: rgba(63,185,80,0.15);
+      --warning: #d29922;
+      --warning-dim: rgba(210,153,34,0.15);
+      --error: #f85149;
+      --error-dim: rgba(248,81,73,0.15);
+      --text-primary: #e6edf3;
+      --text-secondary: #8b949e;
+      --text-muted: #484f58;
+      --border: #30363d;
+      --border-hover: #484f58;
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+      --radius: 10px;
+      --radius-sm: 6px;
+    }
+
+    [data-theme="light"] {
+      --bg-primary: #ffffff;
+      --bg-secondary: #f6f8fa;
+      --bg-card: #ffffff;
+      --bg-card-hover: #f3f4f6;
+      --bg-input: #f6f8fa;
+      --accent: #6366f1;
+      --accent-hover: #4f46e5;
+      --accent-dim: rgba(99,102,241,0.08);
+      --success: #1a7f37;
+      --success-dim: rgba(26,127,55,0.1);
+      --warning: #9a6700;
+      --warning-dim: rgba(154,103,0,0.1);
+      --error: #cf222e;
+      --error-dim: rgba(207,34,46,0.1);
+      --text-primary: #1f2328;
+      --text-secondary: #656d76;
+      --text-muted: #8b949e;
+      --border: #d0d7de;
+      --border-hover: #8b949e;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      /* Popup 尺寸 */
+      width: 360px;
+      min-height: 400px;
+      overflow-x: hidden;
+    }
+
+    /* === Header === */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-secondary);
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .logo {
+      width: 28px; height: 28px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .logo svg { width: 18px; height: 18px; fill: white; }
+    .header-title { font-weight: 700; font-size: 14px; }
+    .header-actions { display: flex; gap: 4px; }
+    .icon-btn {
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: var(--radius-sm);
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .icon-btn:hover { background: var(--bg-card); color: var(--text-primary); }
+    .icon-btn svg { width: 16px; height: 16px; }
+
+    /* === Status Bar === */
+    .status-bar {
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--success-dim);
+      color: var(--success);
+    }
+    .status-bar.offline {
+      background: var(--error-dim);
+      color: var(--error);
+    }
+    .status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    /* === Unlock Screen === */
+    .unlock-screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 32px;
+      gap: 16px;
+    }
+    .unlock-screen.active { display: flex; }
+    .unlock-icon {
+      width: 48px; height: 48px;
+      background: var(--accent-dim);
+      border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--accent);
+    }
+    .unlock-icon svg { width: 24px; height: 24px; }
+    .unlock-title { font-size: 16px; font-weight: 600; }
+    .unlock-subtitle { font-size: 12px; color: var(--text-secondary); text-align: center; }
+    .input-group {
+      width: 100%;
+      position: relative;
+    }
+    .input-group input {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .input-group input:focus { border-color: var(--accent); }
+    .input-group input::placeholder { color: var(--text-muted); }
+    .btn {
+      width: 100%;
+      padding: 10px 16px;
+      border-radius: var(--radius-sm);
+      border: none;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+
+    /* === Account List === */
+    .account-list-screen { display: none; }
+    .account-list-screen.active { display: block; }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px 6px;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+    }
+
+    .account-list { padding: 0 8px 8px; }
+
+    .account-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: background 0.15s;
+      position: relative;
+    }
+    .account-item:hover { background: var(--bg-card-hover); }
+    .account-item.active {
+      background: var(--accent-dim);
+      border: 1px solid rgba(99,102,241,0.2);
+    }
+    .account-item.active .account-status { color: var(--accent); }
+
+    .account-avatar {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--border);
+      flex-shrink: 0;
+    }
+    .account-avatar-placeholder {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 700;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+    }
+
+    .account-info { flex: 1; min-width: 0; }
+    .account-name {
+      font-size: 13px; font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .account-meta {
+      font-size: 11px; color: var(--text-secondary);
+      display: flex; align-items: center; gap: 4px;
+      margin-top: 2px;
+    }
+    .account-orgs {
+      display: flex; gap: 2px;
+    }
+    .org-badge {
+      width: 16px; height: 16px;
+      border-radius: 4px;
+      object-fit: cover;
+    }
+
+    .account-status {
+      font-size: 10px; font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 12px;
+      white-space: nowrap;
+    }
+    .status-active { background: var(--success-dim); color: var(--success); }
+    .status-cookie-ok { background: var(--accent-dim); color: var(--accent); }
+    .status-expired { background: var(--warning-dim); color: var(--warning); }
+    .status-new { background: var(--bg-card); color: var(--text-muted); }
+
+    /* === Quick Actions === */
+    .quick-actions {
+      padding: 8px 16px 12px;
+      display: flex; gap: 8px;
+    }
+    .btn-action {
+      flex: 1;
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      transition: all 0.15s;
+    }
+    .btn-action:hover {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+      color: var(--accent);
+    }
+    .btn-action svg { width: 14px; height: 14px; }
+
+    /* === Footer === */
+    .footer {
+      border-top: 1px solid var(--border);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .footer a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .footer a:hover { text-decoration: underline; }
+
+    /* === Loading === */
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* === Scrollbar === */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+  </style>
+</head>
+<body>
+  <!-- === Header === -->
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">
+        <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      </div>
+      <span class="header-title">MultiLogin</span>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" title="切换主题" onclick="toggleTheme()">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 13V2a6 6 0 010 12z"/></svg>
+      </button>
+      <button class="icon-btn" title="设置" onclick="showScreen('settings')">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M7.429 1.525a6.593 6.593 0 011.142 0c.036.003.108.036.137.146l.289 1.105c.147.56.55.967.997 1.189.174.086.341.183.501.29.417.278.97.423 1.53.27l1.102-.303c.11-.03.175.016.195.046.219.31.41.641.573.989.014.031.022.11-.059.19l-.815.806c-.411.406-.562.957-.53 1.456a4.588 4.588 0 010 .582c-.032.499.119 1.05.53 1.456l.815.806c.08.08.073.159.059.19a6.494 6.494 0 01-.573.99c-.02.029-.086.074-.195.045l-1.103-.303c-.559-.153-1.112-.008-1.529.27-.16.107-.327.204-.5.29-.449.222-.851.628-.998 1.189l-.289 1.105c-.029.11-.1.143-.137.146a6.613 6.613 0 01-1.142 0c-.036-.003-.108-.037-.137-.146l-.289-1.105c-.147-.56-.55-.967-.997-1.189a4.502 4.502 0 01-.501-.29c-.417-.278-.97-.423-1.53-.27l-1.102.303c-.11.03-.175-.016-.195-.046a6.492 6.492 0 01-.573-.989c-.014-.031-.022-.11.059-.19l.815-.806c.411-.406.562-.957.53-1.456a4.587 4.587 0 010-.582c.032-.499-.119-1.05-.53-1.456l-.815-.806c-.08-.08-.073-.159-.059-.19a6.44 6.44 0 01.573-.99c.02-.029.086-.074.195-.045l1.103.303c.559.153 1.112.008 1.529-.27.16-.107.327-.204.5-.29.449-.222.851-.628.998-1.189l.289-1.105c.029-.11.1-.143.137-.146zM8 0c-.236 0-.47.01-.701.03-.743.065-1.29.615-1.458 1.261l-.29 1.106c-.017.066-.078.158-.211.224a5.994 5.994 0 00-.668.386c-.123.082-.233.117-.3.117h-.013l-1.104-.304c-.656-.18-1.364-.008-1.794.586a7.994 7.994 0 00-.765 1.322c-.3.648-.144 1.37.271 1.781l.816.807c.048.047.096.134.096.268a6.095 6.095 0 000 .776c0 .134-.048.22-.096.268l-.816.807c-.415.411-.571 1.133-.271 1.781.209.452.463.882.765 1.322.43.594 1.138.766 1.794.586l1.104-.304c.073-.02.157-.02.3.118.222.149.434.285.668.386.133.066.194.158.212.224l.289 1.106c.169.646.715 1.196 1.458 1.26a8.094 8.094 0 001.402 0c.743-.064 1.29-.614 1.458-1.26l.29-1.106c.017-.066.078-.158.211-.224.234-.101.446-.237.668-.386.123-.082.233-.117.3-.117h.013l1.104.304c.656.18 1.364.008 1.794-.586.302-.44.556-.87.765-1.322.3-.648.144-1.37-.271-1.781l-.816-.807c-.048-.047-.096-.134-.096-.268a6.095 6.095 0 000-.776c0-.134.048-.22.096-.268l.816-.807c.415-.411.571-1.133.271-1.781a7.994 7.994 0 00-.765-1.322c-.43-.594-1.138-.766-1.794-.586l-1.104.303c-.073.02-.157.02-.3-.117a5.994 5.994 0 00-.668-.386c-.133-.066-.194-.158-.212-.224L9.16 1.29C8.99.645 8.444.095 7.701.031A8.094 8.094 0 008 0zm0 5.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM6.5 8a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- === Status Bar === -->
+  <div class="status-bar">
+    <div class="status-dot"></div>
+    <span>当前登录: <strong>octocat</strong></span>
+  </div>
+
+  <!-- === Unlock Screen (Demo: hidden) === -->
+  <div class="unlock-screen" id="unlock-screen">
+    <div class="unlock-icon">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M4 4v2h-.25A1.75 1.75 0 002 7.75v5.5c0 .966.784 1.75 1.75 1.75h8.5A1.75 1.75 0 0014 13.25v-5.5A1.75 1.75 0 0012.25 6H12V4a4 4 0 10-8 0zm6.5 2V4a2.5 2.5 0 00-5 0v2h5zM12.25 7.5a.25.25 0 01.25.25v5.5a.25.25 0 01-.25.25h-8.5a.25.25 0 01-.25-.25v-5.5a.25.25 0 01.25-.25h8.5z"/></svg>
+    </div>
+    <div class="unlock-title">解锁 MultiLogin</div>
+    <div class="unlock-subtitle">输入主密码以访问你的 GitHub 账号</div>
+    <div class="input-group">
+      <input type="password" placeholder="主密码" />
+    </div>
+    <button class="btn btn-primary">解锁</button>
+  </div>
+
+  <!-- === Account List Screen === -->
+  <div class="account-list-screen active" id="account-list-screen">
+    <div class="section-header">
+      <span class="section-title">账号列表 (5)</span>
+    </div>
+
+    <div class="account-list">
+      <!-- Active Account -->
+      <div class="account-item active">
+        <img class="account-avatar" src="https://avatars.githubusercontent.com/u/583231?v=4" alt="">
+        <div class="account-info">
+          <div class="account-name">octocat</div>
+          <div class="account-meta">
+            <span>octocat@github.com</span>
+            <span>·</span>
+            <span>2 orgs</span>
+          </div>
+        </div>
+        <span class="account-status status-active">活跃</span>
+      </div>
+
+      <!-- Cookie OK -->
+      <div class="account-item">
+        <img class="account-avatar" src="https://avatars.githubusercontent.com/u/1?v=4" alt="">
+        <div class="account-info">
+          <div class="account-name">mojombo</div>
+          <div class="account-meta">
+            <span>1 org</span>
+          </div>
+        </div>
+        <span class="account-status status-cookie-ok">就绪</span>
+      </div>
+
+      <!-- Cookie Expired -->
+      <div class="account-item">
+        <div class="account-avatar-placeholder">D</div>
+        <div class="account-info">
+          <div class="account-name">defunkt</div>
+          <div class="account-meta">
+            <span>Cookie 已过期</span>
+          </div>
+        </div>
+        <span class="account-status status-expired">过期</span>
+      </div>
+
+      <!-- New (Never Logged In) -->
+      <div class="account-item">
+        <div class="account-avatar-placeholder">P</div>
+        <div class="account-info">
+          <div class="account-name">pjhyett</div>
+          <div class="account-meta">
+            <span>从未登录</span>
+          </div>
+        </div>
+        <span class="account-status status-new">新增</span>
+      </div>
+
+      <!-- Another account -->
+      <div class="account-item">
+        <div class="account-avatar-placeholder">W</div>
+        <div class="account-info">
+          <div class="account-name">wanstrath</div>
+          <div class="account-meta">
+            <span>3 orgs</span>
+          </div>
+        </div>
+        <span class="account-status status-cookie-ok">就绪</span>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="quick-actions">
+      <button class="btn-action" title="保存当前账号">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M.143 2.31a.75.75 0 011.047-.167l14.5 10.5a.75.75 0 11-.88 1.214l-2.248-1.628C11.346 13.19 9.792 13.75 8 13.75c-4.706 0-7.4-3.617-7.843-4.247a.774.774 0 010-.506c.2-.282.643-.876 1.283-1.51l-.88-1.218zm4.31 3.118l1.175.85A2.5 2.5 0 008.5 10.5c.337 0 .659-.067.953-.186l1.09.788A4.002 4.002 0 014 8c0-.543.108-1.06.303-1.533l.15.961zM8 3.25c4.706 0 7.4 3.617 7.843 4.247a.774.774 0 010 .506 12.3 12.3 0 01-1.053 1.29l-1.07-.775c.296-.36.54-.733.723-1.018C13.37 5.794 11.18 4.25 8 4.25c-.838 0-1.622.136-2.339.385L4.458 3.82A8.316 8.316 0 018 3.25z"/></svg>
+        保存当前
+      </button>
+      <button class="btn-action" title="打开管理页面">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M7.429 1.525a6.593 6.593 0 011.142 0c.036.003.108.036.137.146l.289 1.105c.147.56.55.967.997 1.189.174.086.341.183.501.29.417.278.97.423 1.53.27l1.102-.303c.11-.03.175.016.195.046.219.31.41.641.573.989.014.031.022.11-.059.19l-.815.806c-.411.406-.562.957-.53 1.456a4.588 4.588 0 010 .582c-.032.499.119 1.05.53 1.456l.815.806c.08.08.073.159.059.19a6.494 6.494 0 01-.573.99c-.02.029-.086.074-.195.045l-1.103-.303c-.559-.153-1.112-.008-1.529.27-.16.107-.327.204-.5.29-.449.222-.851.628-.998 1.189l-.289 1.105c-.029.11-.1.143-.137.146a6.613 6.613 0 01-1.142 0c-.036-.003-.108-.037-.137-.146l-.289-1.105c-.147-.56-.55-.967-.997-1.189a4.502 4.502 0 01-.501-.29c-.417-.278-.97-.423-1.53-.27l-1.102.303c-.11.03-.175-.016-.195-.046a6.492 6.492 0 01-.573-.989c-.014-.031-.022-.11.059-.19l.815-.806c.411-.406.562-.957.53-1.456a4.587 4.587 0 010-.582c.032-.499-.119-1.05-.53-1.456l-.815-.806c-.08-.08-.073-.159-.059-.19a6.44 6.44 0 01.573-.99c.02-.029.086-.074.195-.045l1.103.303c.559.153 1.112.008 1.529-.27.16-.107.327-.204.5-.29.449-.222.851-.628.998-1.189l.289-1.105c.029-.11.1-.143.137-.146zM8 5.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z"/></svg>
+        管理
+      </button>
+    </div>
+  </div>
+
+  <!-- === Footer === -->
+  <div class="footer">
+    <span>5 个账号</span>
+    <a href="#" onclick="showScreen('unlock')">锁定</a>
+  </div>
+
+  <script>
+    function toggleTheme() {
+      const body = document.body.parentElement;
+      const current = body.getAttribute('data-theme');
+      body.setAttribute('data-theme', current === 'light' ? '' : 'light');
+    }
+
+    function showScreen(name) {
+      document.getElementById('unlock-screen').classList.toggle('active', name === 'unlock');
+      document.getElementById('account-list-screen').classList.toggle('active', name !== 'unlock');
+    }
+
+    // 点击账号切换演示
+    document.querySelectorAll('.account-item').forEach(item => {
+      item.addEventListener('click', function() {
+        document.querySelectorAll('.account-item').forEach(i => i.classList.remove('active'));
+        this.classList.add('active');
+        const name = this.querySelector('.account-name').textContent;
+        document.querySelector('.status-bar strong').textContent = name;
+        // 更新状态标签
+        this.querySelector('.account-status').className = 'account-status status-active';
+        this.querySelector('.account-status').textContent = '活跃';
+      });
+    });
+  </script>
+</body>
+</html>

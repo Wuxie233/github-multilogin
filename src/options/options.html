@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GitHub MultiLogin — 设置</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="layout">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-logo">
+          <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        </div>
+        <span class="sidebar-title">MultiLogin</span>
+      </div>
+
+      <div class="nav-item active" data-tab="accounts">
+        <svg viewBox="0 0 16 16"><path fill-rule="evenodd" d="M10.5 5a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0zm.061 3.073a4 4 0 10-5.123 0 6.004 6.004 0 00-3.431 5.142.75.75 0 001.498.07 4.5 4.5 0 018.99 0 .75.75 0 101.498-.07 6.005 6.005 0 00-3.432-5.142z"/></svg>
+        账号管理
+      </div>
+      <div class="nav-item" data-tab="import">
+        <svg viewBox="0 0 16 16"><path fill-rule="evenodd" d="M7.47 10.78a.75.75 0 001.06 0l3.75-3.75a.75.75 0 00-1.06-1.06L8.75 8.44V1.75a.75.75 0 00-1.5 0v6.69L4.78 5.97a.75.75 0 00-1.06 1.06l3.75 3.75zM3.75 13a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5z"/></svg>
+        批量导入
+      </div>
+      <div class="nav-item" data-tab="export">
+        <svg viewBox="0 0 16 16"><path fill-rule="evenodd" d="M3.5 9.75a.75.75 0 01.75.75v1.5a.25.25 0 00.25.25h7a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 0111.5 13.75h-7A1.75 1.75 0 012.75 12v-1.5a.75.75 0 01.75-.75z"/></svg>
+        导入 / 导出
+      </div>
+      <div class="nav-divider"></div>
+      <div class="nav-item" data-tab="security">
+        <svg viewBox="0 0 16 16"><path fill-rule="evenodd" d="M4 4v2h-.25A1.75 1.75 0 002 7.75v5.5c0 .966.784 1.75 1.75 1.75h8.5A1.75 1.75 0 0014 13.25v-5.5A1.75 1.75 0 0012.25 6H12V4a4 4 0 10-8 0zm6.5 2V4a2.5 2.5 0 00-5 0v2h5z"/></svg>
+        安全设置
+      </div>
+      <div class="nav-item" data-tab="theme">
+        <svg viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 13V2a6 6 0 010 12z"/></svg>
+        外观
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main">
+      <!-- Unlock overlay -->
+      <div class="unlock-overlay" id="unlock-overlay">
+        <div class="unlock-card">
+          <div class="unlock-icon">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M4 4v2h-.25A1.75 1.75 0 002 7.75v5.5c0 .966.784 1.75 1.75 1.75h8.5A1.75 1.75 0 0014 13.25v-5.5A1.75 1.75 0 0012.25 6H12V4a4 4 0 10-8 0zm6.5 2V4a2.5 2.5 0 00-5 0v2h5z"/></svg>
+          </div>
+          <div class="unlock-title">输入主密码</div>
+          <input type="password" class="form-input" id="options-unlock-pw" placeholder="主密码">
+          <button class="btn btn-primary" id="btn-options-unlock" style="margin-top:12px">解锁</button>
+          <div class="error-msg" id="options-unlock-error"></div>
+        </div>
+      </div>
+
+      <!-- Tab: Accounts -->
+      <div class="tab-content active" id="tab-accounts">
+        <div class="page-title">账号管理</div>
+        <div class="page-subtitle">管理你的 GitHub 账号。点击编辑按钮可修改账号信息。</div>
+        <div class="card" style="padding:0; overflow:hidden;">
+          <table class="account-table">
+            <thead>
+              <tr><th>用户</th><th>状态</th><th>2FA</th><th>最后登录</th><th></th></tr>
+            </thead>
+            <tbody id="accounts-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab: Import -->
+      <div class="tab-content" id="tab-import">
+        <div class="page-title">批量导入</div>
+        <div class="page-subtitle">每行一个账号，格式：账号----密码----2FA密钥</div>
+        <div class="card">
+          <div class="card-title">粘贴账号信息</div>
+          <div class="card-desc">支持批量导入，每行一个账号。空行会被自动跳过。</div>
+          <div class="form-group">
+            <textarea class="form-input form-textarea" id="import-text" placeholder="user1----password1----TOTP_SECRET_1&#10;user2----password2----TOTP_SECRET_2"></textarea>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-primary" id="btn-import" style="width:auto">导入</button>
+            <button class="btn btn-outline" id="btn-import-clear" style="width:auto">清空</button>
+          </div>
+          <div class="import-result" id="import-result" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- Tab: Export -->
+      <div class="tab-content" id="tab-export">
+        <div class="page-title">导入 / 导出</div>
+        <div class="page-subtitle">以加密 JSON 格式导入或导出你的账号数据。</div>
+        <div class="card">
+          <div class="card-title">导出数据</div>
+          <div class="card-desc">导出的 JSON 文件包含加密后的数据。导入时需要相同的主密码才能解密。</div>
+          <button class="btn btn-primary" id="btn-export" style="width:auto">导出 JSON</button>
+        </div>
+        <div class="card">
+          <div class="card-title">导入数据</div>
+          <div class="card-desc">从另一个浏览器导出的 JSON 文件导入。需要相同的主密码。</div>
+          <div class="form-group">
+            <input type="file" class="form-input" id="import-file" accept=".json" style="padding:8px">
+          </div>
+          <button class="btn btn-outline" id="btn-import-json" style="width:auto">导入 JSON</button>
+          <div class="import-result" id="json-import-result" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- Tab: Security -->
+      <div class="tab-content" id="tab-security">
+        <div class="page-title">安全设置</div>
+        <div class="page-subtitle">管理主密码和加密设置。</div>
+        <div class="card">
+          <div class="card-title">修改主密码</div>
+          <div class="card-desc">修改后所有已保存数据将使用新密码重新加密。</div>
+          <div class="form-group">
+            <label class="form-label">当前密码</label>
+            <input type="password" class="form-input" id="old-password" placeholder="输入当前主密码">
+          </div>
+          <div class="form-group">
+            <label class="form-label">新密码</label>
+            <input type="password" class="form-input" id="new-password" placeholder="输入新主密码">
+          </div>
+          <div class="form-group">
+            <label class="form-label">确认新密码</label>
+            <input type="password" class="form-input" id="new-password-confirm" placeholder="再次输入新密码">
+          </div>
+          <button class="btn btn-primary" id="btn-change-pw" style="width:auto">更新密码</button>
+          <div class="error-msg" id="change-pw-msg" style="margin-top:8px"></div>
+        </div>
+        <div class="card" style="border-color:var(--error)">
+          <div class="card-title" style="color:var(--error)">危险区域</div>
+          <div class="card-desc">清除所有数据将永久删除所有保存的账号、Cookie 和设置。此操作无法撤销。</div>
+          <button class="btn btn-danger" id="btn-clear-all" style="width:auto">清除所有数据</button>
+        </div>
+      </div>
+
+      <!-- Tab: Theme -->
+      <div class="tab-content" id="tab-theme">
+        <div class="page-title">外观</div>
+        <div class="page-subtitle">选择界面主题。</div>
+        <div class="card">
+          <div class="card-title">主题</div>
+          <div class="card-desc">选择深色或浅色主题。设置同时应用于 Popup 和管理页。</div>
+          <div class="theme-toggle">
+            <div class="theme-option selected" data-theme-value="dark">
+              <div class="theme-preview dark"></div>
+              <div class="theme-label">深色</div>
+            </div>
+            <div class="theme-option" data-theme-value="light">
+              <div class="theme-preview light"></div>
+              <div class="theme-label">浅色</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
