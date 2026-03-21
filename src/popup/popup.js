@@ -295,6 +295,9 @@ chrome.runtime.onMessage.addListener((msg) => {
     if (msg.status === 'success') {
       refreshStatus();
       refreshAccountList();
+    } else if (msg.status === 'error') {
+      alert(msg.message);
+      refreshStatus();
     } else if (msg.status === 'device_verify_required') {
       alert(msg.message);
     }

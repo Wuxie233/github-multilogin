@@ -152,12 +152,7 @@
     return true; // 保持 sendResponse 活跃
   });
 
-  // 页面加载后自动通知 Background 当前状态
-  if (document.readyState === 'complete') {
-    sendMessage('pageReady', { page: detectPage(), loggedIn: isLoggedIn(), username: getCurrentUsername() });
-  } else {
-    window.addEventListener('load', () => {
-      sendMessage('pageReady', { page: detectPage(), loggedIn: isLoggedIn(), username: getCurrentUsername() });
-    });
-  }
+  // 不再主动发送 pageReady —— 减少对正常登录流的干扰
+  // 由 background.js 的 tabs.onUpdated 监听器主动探测
+  // 只在有活跃自动登录 session 时才会交互
 })();

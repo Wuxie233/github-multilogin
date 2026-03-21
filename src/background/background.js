@@ -135,6 +135,13 @@ async function switchAccount(accountId) {
   // 保存当前活跃账号的 Cookie（如果有的话）
   await saveCurrentCookies();
 
+  // 先把所有 GitHub 标签页导航到 about:blank（停止页面脚本，防止 Cookie 竞争）
+  const tabs = await chrome.tabs.query({ url: 'https://github.com/*' });
+  for (const tab of tabs) {
+    try { await chrome.tabs.update(tab.id, { url: 'about:blank' }); } catch { }
+  }
+  await new Promise(r => setTimeout(r, 300));
+
   // 注入目标 Cookie
   await Cookies.switchToAccount(account.cookies);
 
@@ -149,8 +156,10 @@ async function switchAccount(accountId) {
   // 更新状态
   await Storage.updateAccountState(accountId, { status: 'active' });
 
-  // 刷新当前 GitHub 标签页
-  await refreshGitHubTabs();
+  // 导航所有标签页到 GitHub 首页（拿到新 CSRF token）
+  for (const tab of tabs) {
+    try { await chrome.tabs.update(tab.id, { url: 'https://github.com/' }); } catch { }
+  }
 
   return { success: true, username: validity.username };
 }
@@ -207,12 +216,42 @@ async function continueLoginFlow(tabId, pageInfo) {
       });
       session.step = 'waiting_2fa_or_success';
     }
+    else if (pageInfo.page === 'login' && session.step === 'waiting_2fa_or_success') {
+      // 登录表单提交后又回到 login 页 → 密码错误
+      loginSessions.delete(tabId);
+      chrome.runtime.sendMessage({
+        action: 'loginStatus',
+        accountId: session.accountId,
+        status: 'error',
+        message: '密码错误，请检查账号密码'
+      }).catch(() => {});
+    }
     else if (pageInfo.page === '2fa') {
       // 生成 TOTP 并填写
       if (!session.totpSecret) {
         loginSessions.delete(tabId);
-        return; // 没有 2FA 密钥，用户手动处理
+        chrome.runtime.sendMessage({
+          action: 'loginStatus',
+          accountId: session.accountId,
+          status: 'error',
+          message: '需要 2FA 但未设置 TOTP 密钥，请手动完成验证'
+        }).catch(() => {});
+        return;
       }
+
+      // 如果已经尝试过 2FA（step 为 waiting_login_result），说明验证码错误
+      // 停止自动化，让用户手动处理
+      if (session.step === 'waiting_login_result') {
+        loginSessions.delete(tabId);
+        chrome.runtime.sendMessage({
+          action: 'loginStatus',
+          accountId: session.accountId,
+          status: 'error',
+          message: '2FA 验证码错误，请检查 TOTP 密钥是否正确，或手动输入验证码'
+        }).catch(() => {});
+        return;
+      }
+
       session.step = 'filling_2fa';
       const totpCode = await TOTP.generateTOTP(session.totpSecret);
       await chrome.tabs.sendMessage(tabId, {
@@ -322,15 +361,12 @@ async function getCurrentStatus() {
   };
 }
 
-/** 刷新所有 GitHub 标签页 — 导航到 github.com 首页以重新建立 session */
+/** 刷新所有 GitHub 标签页 — 全部导航到首页以重新建立 session + CSRF token */
 async function refreshGitHubTabs() {
   const tabs = await chrome.tabs.query({ url: 'https://github.com/*' });
-  if (tabs.length > 0) {
-    // 第一个标签页导航到首页（触发新 session），其余直接刷新
-    await chrome.tabs.update(tabs[0].id, { url: 'https://github.com/' });
-    for (let i = 1; i < tabs.length; i++) {
-      chrome.tabs.reload(tabs[i].id);
-    }
+  for (const tab of tabs) {
+    // 导航（不是 reload）确保拿到新页面、新 CSRF token
+    try { await chrome.tabs.update(tab.id, { url: 'https://github.com/' }); } catch { }
   }
 }
 
@@ -341,36 +377,58 @@ async function logoutGitHub() {
     await saveCurrentCookies();
   } catch { /* 静默 */ }
 
-  // 清除所有 GitHub Cookie
-  await Cookies.clearGitHubCookies();
-
-  // 将所有 GitHub 标签页导航到 login 页（避免 CSRF 错误）
+  // 1. 先把所有 GitHub 标签页导航到 about:blank（彻底停止页面脚本，防止页面重新写入 Cookie）
   const tabs = await chrome.tabs.query({ url: 'https://github.com/*' });
   for (const tab of tabs) {
-    await chrome.tabs.update(tab.id, { url: 'https://github.com/login' });
+    try { await chrome.tabs.update(tab.id, { url: 'about:blank' }); } catch { }
+  }
+
+  // 2. 等待导航完成
+  await new Promise(r => setTimeout(r, 500));
+
+  // 3. 清除所有 GitHub Cookie
+  await Cookies.clearGitHubCookies();
+
+  // 4. 等待 Cookie 完全清除
+  await new Promise(r => setTimeout(r, 200));
+
+  // 5. 将第一个标签页导航到 login
+  if (tabs.length > 0) {
+    await chrome.tabs.update(tabs[0].id, { url: 'https://github.com/login' });
   }
 
   return { success: true };
 }
 
-// 监听标签页更新（用于跟踪登录流程）
+// 监听标签页更新（仅用于跟踪自动登录流程）
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status !== 'complete') return;
   if (!loginSessions.has(tabId)) return;
   if (!tab.url?.startsWith('https://github.com')) return;
 
-  // 注入 Content Script 检测页面状态
-  chrome.tabs.sendMessage(tabId, {
-    target: 'content-login',
-    action: 'detectPage'
-  }).then(response => {
-    if (response) {
-      continueLoginFlow(tabId, response);
-    }
-  }).catch(() => {
-    // Content Script 可能还没加载
-  });
+  // Content Script 可能还没加载，重试几次
+  probeContentScript(tabId, 3);
 });
+
+async function probeContentScript(tabId, retries) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await chrome.tabs.sendMessage(tabId, {
+        target: 'content-login',
+        action: 'detectPage'
+      });
+      if (response) {
+        continueLoginFlow(tabId, response);
+        return;
+      }
+    } catch {
+      // Content Script 还没加载，等待后重试
+      if (i < retries - 1) {
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+  }
+}
 
 // 标签页关闭时清理 session
 chrome.tabs.onRemoved.addListener((tabId) => {

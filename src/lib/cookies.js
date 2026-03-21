@@ -1,29 +1,29 @@
 /**
  * Cookie 管理模块
  * 读取、注入、清除 GitHub Cookie
+ *
+ * 关键：GitHub 使用 __Host- 前缀 Cookie（如 __Host-user_session_same_site）
+ * 这类 Cookie 必须是 host-only（不带 domain 属性），否则 CSRF 校验会失败。
  */
 
-const GITHUB_DOMAINS = ['.github.com', 'github.com'];
 const GITHUB_URL = 'https://github.com';
 
-/** 读取所有 GitHub Cookie */
+/** 读取所有 GitHub Cookie（包括子域名） */
 async function getGitHubCookies() {
-  const cookies = await chrome.cookies.getAll({ domain: '.github.com' });
-  const cookies2 = await chrome.cookies.getAll({ domain: 'github.com' });
-  // 去重（按 name + domain + path）
-  const map = new Map();
-  for (const c of [...cookies, ...cookies2]) {
-    map.set(`${c.name}|${c.domain}|${c.path}`, c);
-  }
-  return Array.from(map.values());
+  // domain 过滤器会匹配 github.com 及其所有子域名（api/alive/education...）
+  return chrome.cookies.getAll({ domain: 'github.com' });
 }
 
-/** 序列化 Cookie 为可存储格式 */
+/**
+ * 序列化 Cookie 为可存储格式
+ * 关键：保留 hostOnly 属性，注入时才能正确恢复 __Host- Cookie
+ */
 function serializeCookies(cookies) {
   return cookies.map(c => ({
     name: c.name,
     value: c.value,
     domain: c.domain,
+    hostOnly: c.hostOnly,
     path: c.path,
     secure: c.secure,
     httpOnly: c.httpOnly,
@@ -32,7 +32,7 @@ function serializeCookies(cookies) {
   }));
 }
 
-/** 清除所有 GitHub Cookie */
+/** 清除所有 GitHub Cookie（包括子域名） */
 async function clearGitHubCookies() {
   const cookies = await getGitHubCookies();
   const promises = cookies.map(c => {
@@ -43,19 +43,35 @@ async function clearGitHubCookies() {
   await Promise.all(promises);
 }
 
-/** 注入一组 Cookie */
+/**
+ * 注入一组 Cookie
+ * 关键1：host-only Cookie（__Host- 前缀）不能设置 domain 参数，
+ * 否则 chrome.cookies.set 会创建 domain Cookie，破坏 CSRF 保护。
+ * 关键2：跳过 _gh_sess — 这是 GitHub 的加密 CSRF 状态 Cookie，
+ * 注入旧值会导致 authenticity_token 与 _gh_sess 不同步，
+ * 让 GitHub 在首次页面加载时自动重建才能保持一致。
+ */
+// 注入时跳过的 Cookie（让 GitHub 在页面加载时自动重建）
+const SKIP_ON_INJECT = new Set(['_gh_sess']);
+
 async function injectCookies(cookieList) {
   for (const c of cookieList) {
+    if (SKIP_ON_INJECT.has(c.name)) continue;
+
     const details = {
       url: `https://${c.domain.replace(/^\./, '')}${c.path}`,
       name: c.name,
       value: c.value,
-      domain: c.domain,
       path: c.path,
       secure: c.secure,
       httpOnly: c.httpOnly,
       sameSite: c.sameSite || 'unspecified'
     };
+    // host-only Cookie 不设置 domain（让浏览器自动设为 host-only）
+    // __Host- 前缀 Cookie 必须是 host-only，否则浏览器会拒绝或降级
+    if (!c.hostOnly) {
+      details.domain = c.domain;
+    }
     if (c.expirationDate) {
       details.expirationDate = c.expirationDate;
     }
