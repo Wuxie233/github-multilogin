@@ -1,6 +1,6 @@
 # GitHub MultiLogin
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Chrome MV3](https://img.shields.io/badge/Chrome-Manifest%20V3-blue.svg)](manifest.json)
 
 Chrome/Edge 浏览器扩展 — 在多个 GitHub 账号之间快速切换登录态。
@@ -108,4 +108,6 @@ Chrome/Edge 浏览器扩展 — 在多个 GitHub 账号之间快速切换登录�
 
 ## License
 
-[MIT License](LICENSE) © 2026 Wuxie233
+[GNU General Public License v3.0](LICENSE) © 2026 Wuxie233
+
+本程序是自由软件：你可以在 GNU 通用公共许可证（版本 3 或更高版本）的条款下重新分发和/或修改它。任何基于本程序的衍生作品必须以相同许可证开源。
