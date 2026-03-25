@@ -422,7 +422,7 @@ async function generateTOTPForAccount(accountId) {
   return { code, remaining };
 }
 
-/** 检测当前登录账号的 Copilot 状态（优化版：需已有 GitHub 标签页） */
+/** 检测当前登录账号的 Copilot 状态 */
 async function checkCopilotStatus() {
   // 找一个已打开的 github.com 标签页
   const tabs = await chrome.tabs.query({ url: 'https://github.com/*' });
@@ -436,39 +436,32 @@ async function checkCopilotStatus() {
   const targetTabId = loadedTab.id;
 
   try {
+    // ISOLATED world（默认）中 content script 的 fetch 使用页面的 cookie
     const results = await chrome.scripting.executeScript({
       target: { tabId: targetTabId },
-      world: 'MAIN',
       func: () => {
-        // 返回一个 Promise — executeScript 会自动 await
-        return new Promise((resolve) => {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => {
-            controller.abort();
-            resolve({ available: false, plan: '', details: '请求超时 (8s)' });
-          }, 8000);
-
-          fetch('/settings/copilot', {
-            credentials: 'same-origin',
-            signal: controller.signal,
-            headers: { 'Accept': 'text/html' }
-          })
-          .then(resp => {
-            clearTimeout(timeout);
-
-            if (resp.status === 404) {
-              return resolve({ available: false, plan: '', details: 'Copilot 设置页面不存在' });
+        return fetch('/settings/copilot', {
+          credentials: 'same-origin',
+          redirect: 'follow',
+          headers: { 'Accept': 'text/html' }
+        })
+        .then(resp => {
+          // 借鉴 github-shop：先看 HTTP 响应状态
+          if (resp.status === 404) {
+            return { available: false, plan: '', details: 'Copilot 设置页面不存在' };
+          }
+          if (resp.redirected) {
+            const finalUrl = resp.url;
+            if (finalUrl.includes('/login') || finalUrl.includes('/session')) {
+              return { available: false, plan: '', details: '未登录 GitHub' };
             }
-            if (resp.redirected && resp.url.includes('/login')) {
-              return resolve({ available: false, plan: '', details: '未登录 GitHub' });
+            // 重定向到非登录页 → 可能是 Copilot 不可用
+            if (!finalUrl.includes('/settings/copilot')) {
+              return { available: false, plan: '', details: '被重定向到: ' + finalUrl };
             }
-
-            return resp.text();
-          })
-          .then(html => {
-            if (!html || typeof html !== 'string') return;
-
-            // 按优先级检测
+          }
+          // 200 = 页面可访问，尝试解析具体订阅类型
+          return resp.text().then(html => {
             const plans = [
               [['Copilot Pro+', 'copilot_pro_plus'], 'Pro+', 'Pro+ 订阅激活'],
               [['Copilot Pro', 'copilot_pro'], 'Pro', 'Pro 订阅激活'],
@@ -480,24 +473,24 @@ async function checkCopilotStatus() {
 
             for (const [keys, plan, details] of plans) {
               if (keys.some(k => html.includes(k))) {
-                return resolve({ available: true, plan, details });
+                return { available: true, plan, details };
               }
             }
 
             if (html.includes('Your Copilot plan') || html.includes('Copilot is active') || html.includes('copilot_enabled')) {
-              return resolve({ available: true, plan: 'Active', details: 'Copilot 已激活' });
+              return { available: true, plan: 'Active', details: 'Copilot 已激活' };
             }
 
             if (html.includes('Start free trial') || html.includes('Buy Copilot') || html.includes('Get Copilot') || html.includes('Enable Copilot')) {
-              return resolve({ available: false, plan: '', details: '未订阅 Copilot' });
+              return { available: false, plan: '', details: '未订阅 Copilot' };
             }
 
-            resolve({ available: false, plan: '', details: '无法确定 Copilot 状态' });
-          })
-          .catch(e => {
-            clearTimeout(timeout);
-            resolve({ available: false, plan: '', details: '请求失败: ' + e.message });
+            // HTTP 200 但无法识别具体类型 → 至少页面可访问
+            return { available: true, plan: 'Active', details: 'Copilot 页面可访问' };
           });
+        })
+        .catch(e => {
+          return { available: false, plan: '', details: '请求失败: ' + e.message };
         });
       }
     });
