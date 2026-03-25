@@ -1,5 +1,8 @@
 # GitHub MultiLogin
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Chrome MV3](https://img.shields.io/badge/Chrome-Manifest%20V3-blue.svg)](manifest.json)
+
 Chrome/Edge 浏览器扩展 — 在多个 GitHub 账号之间快速切换登录态。
 
 ## 功能
@@ -8,6 +11,8 @@ Chrome/Edge 浏览器扩展 — 在多个 GitHub 账号之间快速切换登录�
 - **自动登录** — 自动填写用户名、密码、2FA 验证码完成 GitHub 登录
 - **Cookie 切换** — 已登录账号通过 Cookie 注入秒切，无需重新登录
 - **保存当前账号** — 一键提取当前已登录 GitHub 账号的 Cookie 和用户信息
+- **2FA 快速复制** — 一键生成并复制当前 TOTP 验证码到剪贴板
+- **Copilot 状态检测** — 检测当前账号的 Copilot 订阅状态，区分已激活/未订阅/被封禁
 - **安全存储** — AES-256-GCM 加密，主密码 PBKDF2 派生，关闭浏览器自动锁定
 - **深色/浅色主题** — Popup 和 Options 页面双主题支持
 
@@ -82,9 +87,25 @@ Chrome/Edge 浏览器扩展 — 在多个 GitHub 账号之间快速切换登录�
     └── plans/                    # 开发计划
 ```
 
+## 安全
+
+- **加密算法**：AES-256-GCM + PBKDF2-SHA256（310,000 迭代），符合 [OWASP 推荐标准](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
+- **密钥派生**：每次加密使用独立随机 Salt（16 字节）和 IV（12 字节）
+- **密码缓存**：使用 `chrome.storage.session`，关闭浏览器自动清除
+- **XSS 防护**：所有用户数据输出均经过 HTML 转义
+- **最小权限**：仅请求 `cookies`、`storage`、`activeTab`、`scripting` 权限，host 限定 `github.com`
+
+## 隐私
+
+**所有数据仅存储在浏览器本地**（`chrome.storage.local`），不会传输到任何外部服务器。扩展不包含任何遥测、分析或数据收集功能。
+
 ## 已知限制
 
 - Service Worker 的 `fetch()` 不携带浏览器 Cookie，用户信息通过 `dotcom_user` Cookie 获取
 - Cookie 切换后需要导航到 github.com 首页（重建 session），直接 reload 会触发 CSRF 保护
 - 遇到 GitHub 风控验证码、设备验证时需要用户手动完成
 - 仅支持 github.com，不支持 GitHub Enterprise
+
+## License
+
+[MIT License](LICENSE) © 2026 Wuxie233

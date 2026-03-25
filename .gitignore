@@ -5,3 +5,8 @@ Thumbs.db
 *.zip
 *.crx
 *.pem
+.env
+.env.*
+dist/
+build/
+*.bak
