@@ -431,76 +431,74 @@ async function checkCopilotStatus() {
     return { available: false, plan: '', details: '请先打开任意 GitHub 页面' };
   }
 
-  const targetTabId = tabs[0].id;
+  // 优先用已完成加载的标签页
+  const loadedTab = tabs.find(t => t.status === 'complete') || tabs[0];
+  const targetTabId = loadedTab.id;
 
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId: targetTabId },
-      func: async () => {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
-        try {
-          const resp = await fetch('/settings/copilot', {
+      world: 'MAIN',
+      func: () => {
+        // 返回一个 Promise — executeScript 会自动 await
+        return new Promise((resolve) => {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => {
+            controller.abort();
+            resolve({ available: false, plan: '', details: '请求超时 (8s)' });
+          }, 8000);
+
+          fetch('/settings/copilot', {
             credentials: 'same-origin',
             signal: controller.signal,
             headers: { 'Accept': 'text/html' }
-          });
+          })
+          .then(resp => {
+            clearTimeout(timeout);
 
-          clearTimeout(timeout);
-
-          if (resp.status === 404) {
-            return { available: false, plan: '', details: 'Copilot 设置页面不存在' };
-          }
-
-          if (resp.redirected && resp.url.includes('/login')) {
-            return { available: false, plan: '', details: '未登录 GitHub' };
-          }
-
-          // 只读取前 50KB，足够提取订阅信息
-          const reader = resp.body.getReader();
-          const decoder = new TextDecoder();
-          let html = '';
-          const MAX_SIZE = 50 * 1024;
-
-          while (html.length < MAX_SIZE) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            html += decoder.decode(value, { stream: true });
-          }
-          reader.cancel();
-
-          // 按优先级检测订阅类型
-          const plans = [
-            { keys: ['Copilot Pro+', 'copilot_pro_plus'], plan: 'Pro+', d: 'Pro+ 订阅激活' },
-            { keys: ['Copilot Pro', 'copilot_pro'], plan: 'Pro', d: 'Pro 订阅激活' },
-            { keys: ['Copilot Enterprise', 'copilot_enterprise'], plan: 'Enterprise', d: '企业高级版激活' },
-            { keys: ['Copilot Business', 'copilot_business', 'Copilot for Business'], plan: 'Business', d: '企业版激活' },
-            { keys: ['Copilot Individual', 'copilot_individual'], plan: 'Individual', d: '个人订阅激活' },
-            { keys: ['Copilot Free', 'copilot_free'], plan: 'Free', d: '免费版激活' },
-          ];
-
-          for (const { keys, plan, d } of plans) {
-            if (keys.some(k => html.includes(k))) {
-              return { available: true, plan, details: d };
+            if (resp.status === 404) {
+              return resolve({ available: false, plan: '', details: 'Copilot 设置页面不存在' });
             }
-          }
+            if (resp.redirected && resp.url.includes('/login')) {
+              return resolve({ available: false, plan: '', details: '未登录 GitHub' });
+            }
 
-          if (html.includes('Your Copilot plan') || html.includes('Copilot is active') || html.includes('copilot_enabled')) {
-            return { available: true, plan: 'Active', details: 'Copilot 已激活' };
-          }
+            return resp.text();
+          })
+          .then(html => {
+            if (!html || typeof html !== 'string') return;
 
-          if (html.includes('Start free trial') || html.includes('Buy Copilot') || html.includes('Get Copilot') || html.includes('Enable Copilot')) {
-            return { available: false, plan: '', details: '未订阅 Copilot' };
-          }
+            // 按优先级检测
+            const plans = [
+              [['Copilot Pro+', 'copilot_pro_plus'], 'Pro+', 'Pro+ 订阅激活'],
+              [['Copilot Pro', 'copilot_pro'], 'Pro', 'Pro 订阅激活'],
+              [['Copilot Enterprise', 'copilot_enterprise'], 'Enterprise', '企业高级版激活'],
+              [['Copilot Business', 'copilot_business', 'Copilot for Business'], 'Business', '企业版激活'],
+              [['Copilot Individual', 'copilot_individual'], 'Individual', '个人订阅激活'],
+              [['Copilot Free', 'copilot_free'], 'Free', '免费版激活'],
+            ];
 
-          return { available: false, plan: '', details: '无法确定 Copilot 状态' };
-        } catch (e) {
-          clearTimeout(timeout);
-          if (e.name === 'AbortError') {
-            return { available: false, plan: '', details: '请求超时 (8s)' };
-          }
-          return { available: false, plan: '', details: '请求失败: ' + e.message };
-        }
+            for (const [keys, plan, details] of plans) {
+              if (keys.some(k => html.includes(k))) {
+                return resolve({ available: true, plan, details });
+              }
+            }
+
+            if (html.includes('Your Copilot plan') || html.includes('Copilot is active') || html.includes('copilot_enabled')) {
+              return resolve({ available: true, plan: 'Active', details: 'Copilot 已激活' });
+            }
+
+            if (html.includes('Start free trial') || html.includes('Buy Copilot') || html.includes('Get Copilot') || html.includes('Enable Copilot')) {
+              return resolve({ available: false, plan: '', details: '未订阅 Copilot' });
+            }
+
+            resolve({ available: false, plan: '', details: '无法确定 Copilot 状态' });
+          })
+          .catch(e => {
+            clearTimeout(timeout);
+            resolve({ available: false, plan: '', details: '请求失败: ' + e.message });
+          });
+        });
       }
     });
 
