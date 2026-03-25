@@ -446,21 +446,28 @@ async function checkCopilotStatus() {
           headers: { 'Accept': 'text/html' }
         })
         .then(resp => {
-          // 借鉴 github-shop：先看 HTTP 响应状态
-          if (resp.status === 404) {
-            return { available: false, plan: '', details: 'Copilot 设置页面不存在' };
-          }
-          if (resp.redirected) {
-            const finalUrl = resp.url;
+          const status = resp.status;
+          const finalUrl = resp.url || '';
+          const wasRedirected = resp.redirected;
+
+          // 封禁/无权限：被重定向回主页或非 copilot 页面
+          if (wasRedirected && !finalUrl.includes('/settings/copilot')) {
             if (finalUrl.includes('/login') || finalUrl.includes('/session')) {
-              return { available: false, plan: '', details: '未登录 GitHub' };
+              return { available: false, plan: '', details: '未登录 GitHub', banned: false };
             }
-            // 重定向到非登录页 → 可能是 Copilot 不可用
-            if (!finalUrl.includes('/settings/copilot')) {
-              return { available: false, plan: '', details: '被重定向到: ' + finalUrl };
-            }
+            // 被重定向回主页 = Copilot 封禁或不可用
+            return { available: false, plan: '', details: 'Copilot 疑似被封禁（重定向到 ' + finalUrl.replace('https://github.com', '') + '）', banned: true };
           }
-          // 200 = 页面可访问，尝试解析具体订阅类型
+
+          if (status === 404) {
+            return { available: false, plan: '', details: 'Copilot 设置页面不存在', banned: false };
+          }
+
+          if (status !== 200) {
+            return { available: false, plan: '', details: 'HTTP ' + status, banned: false };
+          }
+
+          // HTTP 200 到达 Copilot 设置页 → 解析订阅类型
           return resp.text().then(html => {
             const plans = [
               [['Copilot Pro+', 'copilot_pro_plus'], 'Pro+', 'Pro+ 订阅激活'],
@@ -473,24 +480,24 @@ async function checkCopilotStatus() {
 
             for (const [keys, plan, details] of plans) {
               if (keys.some(k => html.includes(k))) {
-                return { available: true, plan, details };
+                return { available: true, plan, details, banned: false };
               }
             }
 
             if (html.includes('Your Copilot plan') || html.includes('Copilot is active') || html.includes('copilot_enabled')) {
-              return { available: true, plan: 'Active', details: 'Copilot 已激活' };
+              return { available: true, plan: 'Active', details: 'Copilot 已激活', banned: false };
             }
 
             if (html.includes('Start free trial') || html.includes('Buy Copilot') || html.includes('Get Copilot') || html.includes('Enable Copilot')) {
-              return { available: false, plan: '', details: '未订阅 Copilot' };
+              return { available: false, plan: '', details: '未订阅 Copilot', banned: false };
             }
 
-            // HTTP 200 但无法识别具体类型 → 至少页面可访问
-            return { available: true, plan: 'Active', details: 'Copilot 页面可访问' };
+            // HTTP 200 + 到达正确页面 → Copilot 可访问
+            return { available: true, plan: 'Active', details: 'Copilot 页面可访问（未被封禁）', banned: false };
           });
         })
         .catch(e => {
-          return { available: false, plan: '', details: '请求失败: ' + e.message };
+          return { available: false, plan: '', details: '请求失败: ' + e.message, banned: false };
         });
       }
     });

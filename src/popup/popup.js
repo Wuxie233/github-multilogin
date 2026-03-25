@@ -314,6 +314,9 @@ async function handleCopilotCheck() {
     if (result.available) {
       resultEl.className = 'copilot-result success';
       resultEl.innerHTML = `✓ Copilot <strong>${escapeHtml(result.plan)}</strong> — ${escapeHtml(result.details)}`;
+    } else if (result.banned) {
+      resultEl.className = 'copilot-result error';
+      resultEl.innerHTML = `⛔ ${escapeHtml(result.details)}`;
     } else {
       resultEl.className = 'copilot-result inactive';
       resultEl.innerHTML = `✗ ${escapeHtml(result.details || 'Copilot 未激活')}`;
