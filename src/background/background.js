@@ -508,6 +508,8 @@ async function checkCopilotStatus() {
           // 3. 检测已激活订阅的正向证据
           const activePlanPatterns = [
             'your copilot plan', 'current plan', 'copilot is active',
+            'is active for your account', 'managed by',
+            'premium requests',
             'manage plan', 'cancel plan', 'copilot_enabled',
             'included in your plan', 'your current copilot', 'manage copilot'
           ];
@@ -541,20 +543,73 @@ async function checkCopilotStatus() {
 
           // 有活跃订阅证据 → 识别具体 plan 类型
           if (hasActivePlan) {
+            // 提取 Premium Requests 额度
+            let quota = null;
+            try {
+              // 方式1: 从主页面 HTML 解析
+              const premIdx = mainLower.indexOf('premium request');
+              if (premIdx !== -1) {
+                const section = mainContent.substring(Math.max(0, premIdx - 500), Math.min(mainContent.length, premIdx + 1000));
+                const qm = section.match(/(\d[\d,]*)\s*(?:of|\/)\s*(\d[\d,]*)/);
+                if (qm) {
+                  quota = { used: parseInt(qm[1].replace(/,/g, '')), total: parseInt(qm[2].replace(/,/g, '')) };
+                }
+              }
+
+              // 方式2: 从 /settings/copilot/features 获取用量百分比
+              if (!quota) {
+                const fc = new AbortController();
+                const ft = setTimeout(() => fc.abort(), 3000);
+                const fr = await fetch('/settings/copilot/features', {
+                  credentials: 'same-origin',
+                  signal: fc.signal,
+                  headers: { 'Accept': 'text/html' }
+                });
+                clearTimeout(ft);
+                if (fr.ok) {
+                  const fHtml = await fr.text();
+                  // 锚定到 copilot_overages_progress_bar，从 width:XX% 提取真实百分比
+                  const barIdx = fHtml.indexOf('copilot_overages_progress_bar');
+                  if (barIdx !== -1) {
+                    const before = fHtml.substring(Math.max(0, barIdx - 300), barIdx);
+                    const after = fHtml.substring(barIdx, Math.min(fHtml.length, barIdx + 500));
+                    // 优先从 Progress-item 的 width 取
+                    const widthMatch = after.match(/width:\s*(\d+(?:\.\d+)?)%/);
+                    if (widthMatch) {
+                      quota = { percent: parseFloat(widthMatch[1]) };
+                    }
+                    // 备选: 进度条前面的 "XX%" 文本
+                    if (!quota) {
+                      const beforePct = before.match(/(\d+(?:\.\d+)?)%/g);
+                      if (beforePct) {
+                        const last = beforePct[beforePct.length - 1].match(/(\d+(?:\.\d+)?)%/);
+                        if (last) quota = { percent: parseFloat(last[1]) };
+                      }
+                    }
+                  }
+                  // 也尝试提取绝对数字 "X of Y premium requests"
+                  const absMatch = fHtml.match(/(\d[\d,]*)\s*(?:of|\/)\s*(\d[\d,]*)\s*(?:premium|request)/i);
+                  if (absMatch) {
+                    quota = { ...(quota || {}), used: parseInt(absMatch[1].replace(/,/g, '')), total: parseInt(absMatch[2].replace(/,/g, '')) };
+                  }
+                }
+              }
+            } catch (e) {}
+
             const planMap = [
-              [['copilot_pro_plus', 'copilot-pro-plus'], 'Pro+', 'Pro+ 订阅激活'],
-              [['copilot_pro', 'copilot-pro'], 'Pro', 'Pro 订阅激活'],
-              [['copilot_enterprise', 'copilot-enterprise'], 'Enterprise', '企业高级版激活'],
-              [['copilot_business', 'copilot-business', 'copilot for business'], 'Business', '企业版激活'],
-              [['copilot_individual', 'copilot-individual'], 'Individual', '个人订阅激活'],
-              [['copilot_free', 'copilot-free'], 'Free', '免费版激活'],
+              [['copilot_pro_plus', 'copilot-pro-plus', 'copilot pro+'], 'Pro+', 'Pro+ 订阅激活'],
+              [['copilot_pro', 'copilot-pro', 'copilot pro'], 'Pro', 'Pro 订阅激活'],
+              [['copilot_enterprise', 'copilot-enterprise', 'copilot enterprise'], 'Enterprise', '企业高级版激活'],
+              [['copilot_business', 'copilot-business', 'copilot business', 'copilot for business'], 'Business', '企业版激活'],
+              [['copilot_individual', 'copilot-individual', 'copilot individual'], 'Individual', '个人订阅激活'],
+              [['copilot_free', 'copilot-free', 'copilot free'], 'Free', '免费版激活'],
             ];
             for (const [keys, plan, details] of planMap) {
               if (keys.some(k => mainLower.includes(k))) {
-                return { available: true, plan, details: details + ' (' + (elapsed/1000).toFixed(1) + 's)', banned: false };
+                return { available: true, plan, details: details + ' (' + (elapsed/1000).toFixed(1) + 's)', banned: false, quota };
               }
             }
-            return { available: true, plan: 'Active', details: 'Copilot 已激活 (' + (elapsed/1000).toFixed(1) + 's)', banned: false };
+            return { available: true, plan: 'Active', details: 'Copilot 已激活 (' + (elapsed/1000).toFixed(1) + 's)', banned: false, quota };
           }
 
           return { available: false, plan: '', details: '无法确定订阅状态 (' + (elapsed/1000).toFixed(1) + 's)', banned: false };

@@ -374,3 +374,4 @@ body {
 .copilot-result.success { color: var(--success); background: var(--success-dim); }
 .copilot-result.inactive { color: var(--warning); background: var(--warning-dim); }
 .copilot-result.error { color: var(--error); background: var(--error-dim); }
+.copilot-quota { margin-top: 4px; font-size: 11px; opacity: 0.85; }

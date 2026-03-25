@@ -313,7 +313,20 @@ async function handleCopilotCheck() {
     const result = await sendMessage({ action: 'checkCopilotStatus' });
     if (result.available) {
       resultEl.className = 'copilot-result success';
-      resultEl.innerHTML = `✓ Copilot <strong>${escapeHtml(result.plan)}</strong> — ${escapeHtml(result.details)}`;
+      let copilotHtml = `✓ Copilot <strong>${escapeHtml(result.plan)}</strong> — ${escapeHtml(result.details)}`;
+      if (result.quota) {
+        let quotaText = '';
+        if (result.quota.used != null && result.quota.total > 0) {
+          const pct = Math.round(result.quota.used / result.quota.total * 100);
+          quotaText = `Premium: ${result.quota.used} / ${result.quota.total} (${pct}%)`;
+        } else if (result.quota.percent != null) {
+          quotaText = `Premium 已用: ${result.quota.percent}%`;
+        }
+        if (quotaText) {
+          copilotHtml += `<div class="copilot-quota">${escapeHtml(quotaText)}</div>`;
+        }
+      }
+      resultEl.innerHTML = copilotHtml;
     } else if (result.banned) {
       resultEl.className = 'copilot-result error';
       resultEl.innerHTML = `⛔ ${escapeHtml(result.details)}`;
