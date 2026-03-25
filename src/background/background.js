@@ -439,20 +439,19 @@ async function checkCopilotStatus() {
     // ISOLATED world（默认）中 content script 的 fetch 使用页面的 cookie
     const results = await chrome.scripting.executeScript({
       target: { tabId: targetTabId },
-      func: () => {
+      func: async () => {
         const controller = new AbortController();
-        // 正常账号 3-5 秒内返回；被封的账号会一直挂着
         const TIMEOUT_MS = 10000;
         const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
         const startTime = Date.now();
 
-        return fetch('/settings/copilot', {
-          credentials: 'same-origin',
-          redirect: 'follow',
-          signal: controller.signal,
-          headers: { 'Accept': 'text/html' }
-        })
-        .then(resp => {
+        try {
+          const resp = await fetch('/settings/copilot', {
+            credentials: 'same-origin',
+            redirect: 'follow',
+            signal: controller.signal,
+            headers: { 'Accept': 'text/html' }
+          });
           clearTimeout(timeoutId);
           const elapsed = Date.now() - startTime;
           const status = resp.status;
@@ -465,7 +464,7 @@ async function checkCopilotStatus() {
               return { available: false, plan: '', details: '未登录 GitHub', banned: false };
             }
             if (finalUrl.includes('/github-copilot/signup') || finalUrl.includes('copilot/signup')) {
-              return { available: false, plan: '', details: 'Copilot 被封禁/撤销（重定向到注册页）', banned: true };
+              return { available: false, plan: '', details: 'Copilot 被封禁（重定向到注册页）', banned: true };
             }
             if (!finalUrl.includes('/settings/copilot')) {
               return { available: false, plan: '', details: 'Copilot 异常（重定向到 ' + finalUrl.replace('https://github.com', '') + '）', banned: true };
@@ -475,84 +474,97 @@ async function checkCopilotStatus() {
           if (status === 404) {
             return { available: false, plan: '', details: 'Copilot 设置页面不存在', banned: false };
           }
-
           if (status !== 200) {
             return { available: false, plan: '', details: 'HTTP ' + status, banned: false };
           }
 
-          // HTTP 200 到达 Copilot 设置页 → 解析订阅类型和封禁状态
-          return resp.text().then(html => {
-            // 提取主体内容区域
-            const mainMatch = html.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
-            const mainContent = mainMatch ? mainMatch[1] : html;
-            const mainLower = mainContent.toLowerCase();
+          const html = await resp.text();
+          const mainMatch = html.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
+          const mainContent = mainMatch ? mainMatch[1] : html;
+          const mainLower = mainContent.toLowerCase();
 
-            // 1. 检查封禁/限制标志
-            const banPatterns = [
-              'copilot has been disabled', 'copilot access has been disabled',
-              'access has been revoked', 'copilot has been suspended',
-              'copilot is not available for your account',
-              'copilot access is blocked',
-              'violated', 'policy violation', 'terms of service violation'
-            ];
-            for (const pat of banPatterns) {
-              if (mainLower.includes(pat)) {
-                return { available: false, plan: '', details: 'Copilot 被封禁（' + pat + '）', banned: true };
-              }
+          // 1. 检查封禁/限制标志
+          const banPatterns = [
+            'copilot has been disabled', 'copilot access has been disabled',
+            'access has been revoked', 'copilot has been suspended',
+            'copilot is not available for your account',
+            'copilot access is blocked',
+            'violated', 'policy violation', 'terms of service violation'
+          ];
+          for (const pat of banPatterns) {
+            if (mainLower.includes(pat)) {
+              return { available: false, plan: '', details: 'Copilot 被封禁（' + pat + '）', banned: true };
             }
+          }
 
-            // 2. 先检测未订阅/推广标志（优先级高于订阅类型检测）
-            // 被封或未订阅的页面会显示 "Start using Copilot Free" / "try Copilot Pro" 等推广文字
-            const unsubPatterns = [
-              'start using copilot', 'start free trial', 'try copilot',
-              'buy copilot', 'get copilot', 'enable copilot',
-              'choose the plan', 'compare all copilot plans'
-            ];
-            const hasUnsubIndicator = unsubPatterns.some(p => mainLower.includes(p));
+          // 2. 检测未订阅/推广标志
+          const unsubPatterns = [
+            'start using copilot', 'start free trial', 'try copilot',
+            'buy copilot', 'get copilot', 'enable copilot',
+            'choose the plan', 'compare all copilot plans'
+          ];
+          const hasUnsubIndicator = unsubPatterns.some(p => mainLower.includes(p));
 
-            // 3. 检测已激活订阅的正向证据（需要强标志，不能只是出现 plan 名称）
-            const activePlanPatterns = [
-              'your copilot plan', 'current plan', 'copilot is active',
-              'manage plan', 'cancel plan', 'copilot_enabled',
-              'included in your plan', 'your current copilot', 'manage copilot'
-            ];
-            const hasActivePlan = activePlanPatterns.some(p => mainLower.includes(p));
+          // 3. 检测已激活订阅的正向证据
+          const activePlanPatterns = [
+            'your copilot plan', 'current plan', 'copilot is active',
+            'manage plan', 'cancel plan', 'copilot_enabled',
+            'included in your plan', 'your current copilot', 'manage copilot'
+          ];
+          const hasActivePlan = activePlanPatterns.some(p => mainLower.includes(p));
 
-            // 有未订阅标志 + 没有活跃订阅证据 = 未订阅
-            if (hasUnsubIndicator && !hasActivePlan) {
+          // 有未订阅标志 + 没有活跃订阅证据 → 二次检测 /copilot 区分封禁和未订阅
+          if (hasUnsubIndicator && !hasActivePlan) {
+            const banCtrl = new AbortController();
+            const banTimeout = setTimeout(() => banCtrl.abort(), 5000);
+            try {
+              const banResp = await fetch('/copilot', {
+                credentials: 'same-origin',
+                redirect: 'follow',
+                signal: banCtrl.signal,
+                headers: { 'Accept': 'text/html' }
+              });
+              clearTimeout(banTimeout);
+              const banUrl = banResp.url || '';
+              if (banUrl.includes('/copilot/signup') || banUrl.includes('/github-copilot/signup')) {
+                return { available: false, plan: '', details: 'Copilot 被封禁（重定向到注册页）', banned: true };
+              }
+              return { available: false, plan: '', details: '未订阅 Copilot', banned: false };
+            } catch (banErr) {
+              clearTimeout(banTimeout);
+              if (banErr.name === 'AbortError') {
+                return { available: false, plan: '', details: 'Copilot 疑似被封禁（/copilot 超时 5s）', banned: true };
+              }
               return { available: false, plan: '', details: '未订阅 Copilot', banned: false };
             }
+          }
 
-            // 有活跃订阅证据 → 尝试识别具体 plan 类型
-            if (hasActivePlan) {
-              // 用 CSS class / data attribute 等结构化标记优先匹配
-              const planMap = [
-                [['copilot_pro_plus', 'copilot-pro-plus'], 'Pro+', 'Pro+ 订阅激活'],
-                [['copilot_pro', 'copilot-pro'], 'Pro', 'Pro 订阅激活'],
-                [['copilot_enterprise', 'copilot-enterprise'], 'Enterprise', '企业高级版激活'],
-                [['copilot_business', 'copilot-business', 'copilot for business'], 'Business', '企业版激活'],
-                [['copilot_individual', 'copilot-individual'], 'Individual', '个人订阅激活'],
-                [['copilot_free', 'copilot-free'], 'Free', '免费版激活'],
-              ];
-              for (const [keys, plan, details] of planMap) {
-                if (keys.some(k => mainLower.includes(k))) {
-                  return { available: true, plan, details: details + ' (' + (elapsed/1000).toFixed(1) + 's)', banned: false };
-                }
+          // 有活跃订阅证据 → 识别具体 plan 类型
+          if (hasActivePlan) {
+            const planMap = [
+              [['copilot_pro_plus', 'copilot-pro-plus'], 'Pro+', 'Pro+ 订阅激活'],
+              [['copilot_pro', 'copilot-pro'], 'Pro', 'Pro 订阅激活'],
+              [['copilot_enterprise', 'copilot-enterprise'], 'Enterprise', '企业高级版激活'],
+              [['copilot_business', 'copilot-business', 'copilot for business'], 'Business', '企业版激活'],
+              [['copilot_individual', 'copilot-individual'], 'Individual', '个人订阅激活'],
+              [['copilot_free', 'copilot-free'], 'Free', '免费版激活'],
+            ];
+            for (const [keys, plan, details] of planMap) {
+              if (keys.some(k => mainLower.includes(k))) {
+                return { available: true, plan, details: details + ' (' + (elapsed/1000).toFixed(1) + 's)', banned: false };
               }
-              return { available: true, plan: 'Active', details: 'Copilot 已激活 (' + (elapsed/1000).toFixed(1) + 's)', banned: false };
             }
+            return { available: true, plan: 'Active', details: 'Copilot 已激活 (' + (elapsed/1000).toFixed(1) + 's)', banned: false };
+          }
 
-            // 4. 没有明确的未订阅标志也没有活跃订阅证据 — 返回未知状态
-            return { available: false, plan: '', details: '无法确定订阅状态 (' + (elapsed/1000).toFixed(1) + 's)', banned: false };
-          });
-        })
-        .catch(e => {
+          return { available: false, plan: '', details: '无法确定订阅状态 (' + (elapsed/1000).toFixed(1) + 's)', banned: false };
+        } catch (e) {
           clearTimeout(timeoutId);
           if (e.name === 'AbortError') {
             return { available: false, plan: '', details: 'Copilot 疑似被封禁（请求超时 ' + (TIMEOUT_MS/1000) + 's）', banned: true };
           }
           return { available: false, plan: '', details: '请求失败: ' + e.message, banned: false };
-        });
+        }
       }
     });
 
