@@ -501,31 +501,49 @@ async function checkCopilotStatus() {
               }
             }
 
-            // 2. 检测订阅类型
-            const plans = [
-              [['Copilot Pro+', 'copilot_pro_plus'], 'Pro+', 'Pro+ 订阅激活'],
-              [['Copilot Pro', 'copilot_pro'], 'Pro', 'Pro 订阅激活'],
-              [['Copilot Enterprise', 'copilot_enterprise'], 'Enterprise', '企业高级版激活'],
-              [['Copilot Business', 'copilot_business', 'Copilot for Business'], 'Business', '企业版激活'],
-              [['Copilot Individual', 'copilot_individual'], 'Individual', '个人订阅激活'],
-              [['Copilot Free', 'copilot_free'], 'Free', '免费版激活'],
+            // 2. 先检测未订阅/推广标志（优先级高于订阅类型检测）
+            // 被封或未订阅的页面会显示 "Start using Copilot Free" / "try Copilot Pro" 等推广文字
+            const unsubPatterns = [
+              'start using copilot', 'start free trial', 'try copilot',
+              'buy copilot', 'get copilot', 'enable copilot',
+              'choose the plan', 'compare all copilot plans'
             ];
+            const hasUnsubIndicator = unsubPatterns.some(p => mainLower.includes(p));
 
-            for (const [keys, plan, details] of plans) {
-              if (keys.some(k => html.includes(k))) {
-                return { available: true, plan, details: details + ' (' + (elapsed/1000).toFixed(1) + 's)', banned: false };
-              }
-            }
+            // 3. 检测已激活订阅的正向证据（需要强标志，不能只是出现 plan 名称）
+            const activePlanPatterns = [
+              'your copilot plan', 'current plan', 'copilot is active',
+              'manage plan', 'cancel plan', 'copilot_enabled',
+              'included in your plan', 'your current copilot', 'manage copilot'
+            ];
+            const hasActivePlan = activePlanPatterns.some(p => mainLower.includes(p));
 
-            if (html.includes('Your Copilot plan') || html.includes('Copilot is active') || html.includes('copilot_enabled')) {
-              return { available: true, plan: 'Active', details: 'Copilot 已激活 (' + (elapsed/1000).toFixed(1) + 's)', banned: false };
-            }
-
-            if (html.includes('Start free trial') || html.includes('Buy Copilot') || html.includes('Get Copilot') || html.includes('Enable Copilot')) {
+            // 有未订阅标志 + 没有活跃订阅证据 = 未订阅
+            if (hasUnsubIndicator && !hasActivePlan) {
               return { available: false, plan: '', details: '未订阅 Copilot', banned: false };
             }
 
-            return { available: true, plan: 'Active', details: 'Copilot 页面可访问 (' + (elapsed/1000).toFixed(1) + 's)', banned: false };
+            // 有活跃订阅证据 → 尝试识别具体 plan 类型
+            if (hasActivePlan) {
+              // 用 CSS class / data attribute 等结构化标记优先匹配
+              const planMap = [
+                [['copilot_pro_plus', 'copilot-pro-plus'], 'Pro+', 'Pro+ 订阅激活'],
+                [['copilot_pro', 'copilot-pro'], 'Pro', 'Pro 订阅激活'],
+                [['copilot_enterprise', 'copilot-enterprise'], 'Enterprise', '企业高级版激活'],
+                [['copilot_business', 'copilot-business', 'copilot for business'], 'Business', '企业版激活'],
+                [['copilot_individual', 'copilot-individual'], 'Individual', '个人订阅激活'],
+                [['copilot_free', 'copilot-free'], 'Free', '免费版激活'],
+              ];
+              for (const [keys, plan, details] of planMap) {
+                if (keys.some(k => mainLower.includes(k))) {
+                  return { available: true, plan, details: details + ' (' + (elapsed/1000).toFixed(1) + 's)', banned: false };
+                }
+              }
+              return { available: true, plan: 'Active', details: 'Copilot 已激活 (' + (elapsed/1000).toFixed(1) + 's)', banned: false };
+            }
+
+            // 4. 没有明确的未订阅标志也没有活跃订阅证据 — 返回未知状态
+            return { available: false, plan: '', details: '无法确定订阅状态 (' + (elapsed/1000).toFixed(1) + 's)', banned: false };
           });
         })
         .catch(e => {
