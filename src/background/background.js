@@ -459,12 +459,17 @@ async function checkCopilotStatus() {
           const finalUrl = resp.url || '';
           const wasRedirected = resp.redirected;
 
-          // 封禁/无权限：被重定向回主页或非 copilot 页面
-          if (wasRedirected && !finalUrl.includes('/settings/copilot')) {
+          // 封禁/无权限检测：检查最终 URL
+          if (wasRedirected || !finalUrl.includes('/settings/copilot')) {
             if (finalUrl.includes('/login') || finalUrl.includes('/session')) {
               return { available: false, plan: '', details: '未登录 GitHub', banned: false };
             }
-            return { available: false, plan: '', details: 'Copilot 疑似被封禁（重定向到 ' + finalUrl.replace('https://github.com', '') + '）', banned: true };
+            if (finalUrl.includes('/github-copilot/signup') || finalUrl.includes('copilot/signup')) {
+              return { available: false, plan: '', details: 'Copilot 被封禁/撤销（重定向到注册页）', banned: true };
+            }
+            if (!finalUrl.includes('/settings/copilot')) {
+              return { available: false, plan: '', details: 'Copilot 异常（重定向到 ' + finalUrl.replace('https://github.com', '') + '）', banned: true };
+            }
           }
 
           if (status === 404) {
