@@ -440,12 +440,21 @@ async function checkCopilotStatus() {
     const results = await chrome.scripting.executeScript({
       target: { tabId: targetTabId },
       func: () => {
+        const controller = new AbortController();
+        // 正常账号 3-5 秒内返回；被封的账号会一直挂着
+        const TIMEOUT_MS = 10000;
+        const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        const startTime = Date.now();
+
         return fetch('/settings/copilot', {
           credentials: 'same-origin',
           redirect: 'follow',
+          signal: controller.signal,
           headers: { 'Accept': 'text/html' }
         })
         .then(resp => {
+          clearTimeout(timeoutId);
+          const elapsed = Date.now() - startTime;
           const status = resp.status;
           const finalUrl = resp.url || '';
           const wasRedirected = resp.redirected;
@@ -455,7 +464,6 @@ async function checkCopilotStatus() {
             if (finalUrl.includes('/login') || finalUrl.includes('/session')) {
               return { available: false, plan: '', details: '未登录 GitHub', banned: false };
             }
-            // 被重定向回主页 = Copilot 封禁或不可用
             return { available: false, plan: '', details: 'Copilot 疑似被封禁（重定向到 ' + finalUrl.replace('https://github.com', '') + '）', banned: true };
           }
 
@@ -469,23 +477,22 @@ async function checkCopilotStatus() {
 
           // HTTP 200 到达 Copilot 设置页 → 解析订阅类型和封禁状态
           return resp.text().then(html => {
-            // 1. 检查封禁/限制标志（在 <main> 或主体区域中查找）
-            // 提取主体内容区域，减少误报
+            // 提取主体内容区域
             const mainMatch = html.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
             const mainContent = mainMatch ? mainMatch[1] : html;
             const mainLower = mainContent.toLowerCase();
 
-            // 精确匹配封禁关键句
+            // 1. 检查封禁/限制标志
             const banPatterns = [
               'copilot has been disabled', 'copilot access has been disabled',
               'access has been revoked', 'copilot has been suspended',
               'copilot is not available for your account',
-              'your copilot access', 'copilot access is blocked',
+              'copilot access is blocked',
               'violated', 'policy violation', 'terms of service violation'
             ];
             for (const pat of banPatterns) {
               if (mainLower.includes(pat)) {
-                return { available: false, plan: '', details: 'Copilot 被封禁/限制（' + pat + '）', banned: true };
+                return { available: false, plan: '', details: 'Copilot 被封禁（' + pat + '）', banned: true };
               }
             }
 
@@ -501,34 +508,26 @@ async function checkCopilotStatus() {
 
             for (const [keys, plan, details] of plans) {
               if (keys.some(k => html.includes(k))) {
-                // 提取 Copilot 相关的可见文本作为额外上下文
-                const textContent = mainContent.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
-                const copilotSnippets = [];
-                const sentences = textContent.split(/[.!?。！？]/);
-                for (const s of sentences) {
-                  if (s.toLowerCase().includes('copilot') && s.trim().length > 10 && s.trim().length < 200) {
-                    copilotSnippets.push(s.trim());
-                  }
-                }
-                const snippet = copilotSnippets.slice(0, 3).join(' | ');
-                return { available: true, plan, details: details + (snippet ? ' [' + snippet + ']' : ''), banned: false };
+                return { available: true, plan, details: details + ' (' + (elapsed/1000).toFixed(1) + 's)', banned: false };
               }
             }
 
             if (html.includes('Your Copilot plan') || html.includes('Copilot is active') || html.includes('copilot_enabled')) {
-              return { available: true, plan: 'Active', details: 'Copilot 已激活', banned: false };
+              return { available: true, plan: 'Active', details: 'Copilot 已激活 (' + (elapsed/1000).toFixed(1) + 's)', banned: false };
             }
 
             if (html.includes('Start free trial') || html.includes('Buy Copilot') || html.includes('Get Copilot') || html.includes('Enable Copilot')) {
               return { available: false, plan: '', details: '未订阅 Copilot', banned: false };
             }
 
-            // 3. HTTP 200 + 到达正确页面 + 有订阅但无封禁标志
-            // 额外尝试验证：检查是否能访问 Copilot 聊天功能 API
-            return { available: true, plan: 'Active', details: 'Copilot 页面可访问（未检测到封禁标志）', banned: false };
+            return { available: true, plan: 'Active', details: 'Copilot 页面可访问 (' + (elapsed/1000).toFixed(1) + 's)', banned: false };
           });
         })
         .catch(e => {
+          clearTimeout(timeoutId);
+          if (e.name === 'AbortError') {
+            return { available: false, plan: '', details: 'Copilot 疑似被封禁（请求超时 ' + (TIMEOUT_MS/1000) + 's）', banned: true };
+          }
           return { available: false, plan: '', details: '请求失败: ' + e.message, banned: false };
         });
       }
