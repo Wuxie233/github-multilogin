@@ -8,14 +8,15 @@ function generateId() {
   return crypto.randomUUID();
 }
 
-/** 获取所有账号（解密） */
+/** 获取所有账号（解密，支持旧版迭代次数降级） */
 async function getAccounts() {
   const password = await globalThis.Crypto.getMasterPassword();
   const { accounts = [] } = await chrome.storage.local.get('accounts');
   const decrypted = [];
   for (const acc of accounts) {
     try {
-      const plain = JSON.parse(await globalThis.Crypto.decrypt(acc.encrypted, password));
+      const { text } = await globalThis.Crypto.decryptWithFallback(acc.encrypted, password);
+      const plain = JSON.parse(text);
       decrypted.push({ id: acc.id, ...plain });
     } catch {
       // 解密失败的账号保留 ID 和 username
@@ -146,7 +147,8 @@ async function updateAccountState(id, { cookies, profile, status }) {
   const idx = accounts.findIndex(a => a.id === id);
   if (idx < 0) throw new Error('账号不存在');
 
-  const plain = JSON.parse(await globalThis.Crypto.decrypt(accounts[idx].encrypted, password));
+  const { text } = await globalThis.Crypto.decryptWithFallback(accounts[idx].encrypted, password);
+  const plain = JSON.parse(text);
   if (cookies !== undefined) plain.cookies = cookies;
   if (profile !== undefined) plain.profile = profile;
   if (status !== undefined) plain.status = status;
