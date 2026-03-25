@@ -97,6 +97,16 @@ async function handleUIMessage(msg, sender, sendResponse) {
         sendResponse(await getCurrentStatus());
         break;
 
+      // 生成 TOTP 验证码
+      case 'generateTOTP':
+        sendResponse({ result: await generateTOTPForAccount(msg.accountId) });
+        break;
+
+      // 检测 Copilot 状态
+      case 'checkCopilotStatus':
+        sendResponse({ result: await checkCopilotStatus() });
+        break;
+
       default:
         sendResponse({ error: '未知操作: ' + msg.action });
     }
@@ -398,6 +408,117 @@ async function logoutGitHub() {
   }
 
   return { success: true };
+}
+
+/** 为指定账号生成 TOTP 验证码 */
+async function generateTOTPForAccount(accountId) {
+  const accounts = await Storage.getAccounts();
+  const account = accounts.find(a => a.id === accountId);
+  if (!account) throw new Error('账号不存在');
+  if (!account.totpSecret) throw new Error('该账号未设置 TOTP 密钥');
+
+  const code = await TOTP.generateTOTP(account.totpSecret);
+  const remaining = TOTP.getTimeRemaining();
+  return { code, remaining };
+}
+
+/** 检测当前登录账号的 Copilot 状态 */
+async function checkCopilotStatus() {
+  // 找一个已打开的 github.com 标签页，或创建临时标签页
+  let tabs = await chrome.tabs.query({ url: 'https://github.com/*' });
+  let tempTab = null;
+  let targetTabId;
+
+  if (tabs.length > 0) {
+    targetTabId = tabs[0].id;
+  } else {
+    // 创建临时标签页
+    const tab = await chrome.tabs.create({ url: 'https://github.com/', active: false });
+    tempTab = tab;
+    targetTabId = tab.id;
+    // 等待页面加载完成
+    await new Promise((resolve) => {
+      const listener = (tabId, changeInfo) => {
+        if (tabId === targetTabId && changeInfo.status === 'complete') {
+          chrome.tabs.onUpdated.removeListener(listener);
+          resolve();
+        }
+      };
+      chrome.tabs.onUpdated.addListener(listener);
+      // 超时保护
+      setTimeout(() => {
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve();
+      }, 10000);
+    });
+  }
+
+  try {
+    // 在标签页中执行脚本获取 Copilot 设置页面内容
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: targetTabId },
+      func: async () => {
+        try {
+          const resp = await fetch('/settings/copilot', {
+            credentials: 'same-origin',
+            headers: { 'Accept': 'text/html' }
+          });
+
+          if (resp.status === 404) {
+            return { available: false, plan: '', details: 'Copilot 设置页面不存在' };
+          }
+
+          if (resp.redirected && resp.url.includes('/login')) {
+            return { available: false, plan: '', details: '未登录 GitHub' };
+          }
+
+          const html = await resp.text();
+
+          // 检查是否有 Copilot 订阅
+          if (html.includes('Copilot Individual') || html.includes('copilot_individual')) {
+            return { available: true, plan: 'Individual', details: '个人订阅激活' };
+          }
+          if (html.includes('Copilot Business') || html.includes('copilot_business') || html.includes('Copilot for Business')) {
+            return { available: true, plan: 'Business', details: '企业版激活' };
+          }
+          if (html.includes('Copilot Enterprise') || html.includes('copilot_enterprise')) {
+            return { available: true, plan: 'Enterprise', details: '企业高级版激活' };
+          }
+          if (html.includes('Copilot Pro') || html.includes('copilot_pro')) {
+            return { available: true, plan: 'Pro', details: 'Pro 订阅激活' };
+          }
+          if (html.includes('Copilot Free') || html.includes('copilot_free')) {
+            return { available: true, plan: 'Free', details: '免费版激活' };
+          }
+
+          // 通用激活检测
+          if (html.includes('Your Copilot plan') || html.includes('Copilot is active') || html.includes('copilot_enabled')) {
+            return { available: true, plan: 'Active', details: 'Copilot 已激活' };
+          }
+
+          // 检测是否有"启用"或"购买"提示 → 未订阅
+          if (html.includes('Start free trial') || html.includes('Buy Copilot') || html.includes('Get Copilot') || html.includes('Enable Copilot')) {
+            return { available: false, plan: '', details: '未订阅 Copilot' };
+          }
+
+          // 无法确定
+          return { available: false, plan: '', details: '无法确定 Copilot 状态' };
+        } catch (e) {
+          return { available: false, plan: '', details: '请求失败: ' + e.message };
+        }
+      }
+    });
+
+    if (results && results[0]?.result) {
+      return results[0].result;
+    }
+    return { available: false, plan: '', details: '脚本执行无返回' };
+  } finally {
+    // 清理临时标签页
+    if (tempTab) {
+      try { await chrome.tabs.remove(tempTab.id); } catch { }
+    }
+  }
 }
 
 // 监听标签页更新（仅用于跟踪自动登录流程）

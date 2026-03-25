@@ -189,6 +189,7 @@ async function refreshAccountList() {
             <div class="account-name">${escapeHtml(acc.username)}</div>
             <div class="account-meta">${metaParts.join(' · ') || '无详细信息'}</div>
           </div>
+          ${acc.totpSecret ? `<button class="btn-2fa" data-id="${escapeHtml(acc.id)}" title="复制 2FA 验证码">🔑</button>` : ''}
           <span class="account-status ${statusClass}">${statusText}</span>
         </div>
       `;
@@ -197,6 +198,14 @@ async function refreshAccountList() {
     // 绑定点击事件
     list.querySelectorAll('.account-item').forEach(item => {
       item.addEventListener('click', () => handleAccountClick(item.dataset.id));
+    });
+
+    // 绑定 2FA 按钮
+    list.querySelectorAll('.btn-2fa').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handle2FACopy(btn.dataset.id, btn);
+      });
     });
   } catch (e) {
     console.error('刷新账号列表失败:', e);
@@ -268,6 +277,75 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// === 2FA 快速复制 ===
+async function handle2FACopy(accountId, btnEl) {
+  const originalText = btnEl.textContent;
+  btnEl.disabled = true;
+  try {
+    const result = await sendMessage({ action: 'generateTOTP', accountId });
+    await navigator.clipboard.writeText(result.code);
+    btnEl.textContent = `✓ ${result.code}`;
+    btnEl.classList.add('btn-2fa-copied');
+
+    // 倒计时显示剩余秒数
+    let remaining = result.remaining;
+    const timer = setInterval(() => {
+      remaining--;
+      if (remaining <= 0) {
+        clearInterval(timer);
+        btnEl.textContent = originalText;
+        btnEl.classList.remove('btn-2fa-copied');
+        btnEl.disabled = false;
+        return;
+      }
+      btnEl.textContent = `✓ ${result.code} (${remaining}s)`;
+    }, 1000);
+
+    // 3 秒后恢复按钮（不等到 TOTP 过期）
+    setTimeout(() => {
+      clearInterval(timer);
+      btnEl.textContent = originalText;
+      btnEl.classList.remove('btn-2fa-copied');
+      btnEl.disabled = false;
+    }, 3000);
+  } catch (e) {
+    btnEl.textContent = '✗';
+    setTimeout(() => {
+      btnEl.textContent = originalText;
+      btnEl.disabled = false;
+    }, 1500);
+    console.error('2FA 复制失败:', e);
+  }
+}
+
+// === Copilot 测活 ===
+async function handleCopilotCheck() {
+  const btn = $('btn-copilot-check');
+  const resultEl = $('copilot-result');
+  btn.disabled = true;
+  resultEl.style.display = 'block';
+  resultEl.className = 'copilot-result loading';
+  resultEl.textContent = '检测 Copilot 状态中...';
+
+  try {
+    const result = await sendMessage({ action: 'checkCopilotStatus' });
+    if (result.available) {
+      resultEl.className = 'copilot-result success';
+      resultEl.innerHTML = `✓ Copilot <strong>${escapeHtml(result.plan)}</strong> — ${escapeHtml(result.details)}`;
+    } else {
+      resultEl.className = 'copilot-result inactive';
+      resultEl.innerHTML = `✗ ${escapeHtml(result.details || 'Copilot 未激活')}`;
+    }
+  } catch (e) {
+    resultEl.className = 'copilot-result error';
+    resultEl.textContent = '检测失败: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    // 8 秒后自动隐藏
+    setTimeout(() => { resultEl.style.display = 'none'; }, 8000);
+  }
+}
+
 // === 事件绑定 ===
 document.addEventListener('DOMContentLoaded', init);
 
@@ -275,6 +353,7 @@ $('btn-setup')?.addEventListener('click', handleSetup);
 $('btn-unlock')?.addEventListener('click', handleUnlock);
 $('btn-theme')?.addEventListener('click', toggleTheme);
 $('btn-save-current')?.addEventListener('click', handleSaveCurrent);
+$('btn-copilot-check')?.addEventListener('click', handleCopilotCheck);
 $('btn-logout-github')?.addEventListener('click', handleLogoutGitHub);
 $('btn-lock')?.addEventListener('click', handleLock);
 $('btn-manage')?.addEventListener('click', () => chrome.runtime.openOptionsPage());
