@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GitHub MultiLogin",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "在多个 GitHub 账号之间快速切换登录态",
   "permissions": [
     "cookies",
