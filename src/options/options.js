@@ -4,20 +4,7 @@
 
 const $ = (id) => document.getElementById(id);
 
-// === 工具函数 ===
-function sendMessage(msg) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(msg, (response) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-      } else if (response?.error) {
-        reject(new Error(response.error));
-      } else {
-        resolve(response?.result ?? response);
-      }
-    });
-  });
-}
+// === 工具函数 (sendMessage / escapeHtml / escapeAttr 已移至 ../lib/utils.js) ===
 
 function showMsg(elId, text, type = 'error') {
   const el = $(elId);
@@ -244,8 +231,8 @@ $('btn-change-pw').addEventListener('click', async () => {
     showMsg('change-pw-msg', '两次输入的新密码不一致');
     return;
   }
-  if (newPw.length < 6) {
-    showMsg('change-pw-msg', '新密码至少 6 个字符');
+  if (newPw.length < 8) {
+    showMsg('change-pw-msg', '新密码至少 8 个字符');
     return;
   }
   try {
@@ -273,15 +260,7 @@ $('btn-clear-all').addEventListener('click', async () => {
   }
 });
 
-// === XSS 防护 ===
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
-function escapeAttr(str) {
-  return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
+// === XSS 防护 (escapeHtml / escapeAttr 已移至 ../lib/utils.js) ===
 
 // === 初始化 ===
 loadTheme();

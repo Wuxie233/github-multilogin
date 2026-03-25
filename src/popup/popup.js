@@ -11,20 +11,7 @@ const screens = {
   main: $('screen-main')
 };
 
-// === 工具函数 ===
-function sendMessage(msg) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(msg, (response) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-      } else if (response?.error) {
-        reject(new Error(response.error));
-      } else {
-        resolve(response?.result ?? response);
-      }
-    });
-  });
-}
+// === 工具函数 (sendMessage / escapeHtml / escapeAttr 已移至 ../lib/utils.js) ===
 
 function showScreen(name) {
   Object.values(screens).forEach(s => s.classList.remove('active'));
@@ -93,7 +80,7 @@ async function handleSetup() {
   const confirm = $('setup-confirm').value;
 
   if (!password) { showError('setup-error', '请输入密码'); return; }
-  if (password.length < 4) { showError('setup-error', '密码至少 4 位'); return; }
+  if (password.length < 8) { showError('setup-error', '密码至少 8 位'); return; }
   if (password !== confirm) { showError('setup-error', '两次密码不一致'); return; }
 
   try {
@@ -270,12 +257,7 @@ async function handleLogoutGitHub() {
   }
 }
 
-function escapeHtml(str) {
-  if (!str) return '';
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
+
 
 // === 2FA 快速复制 ===
 async function handle2FACopy(accountId, btnEl) {

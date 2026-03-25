@@ -10,8 +10,7 @@
     "scripting"
   ],
   "host_permissions": [
-    "https://github.com/*",
-    "https://*.github.com/*"
+    "https://github.com/*"
   ],
   "background": {
     "service_worker": "src/background/background.js"

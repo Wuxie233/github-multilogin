@@ -3,7 +3,7 @@
  * 主密码 → PBKDF2 派生 256-bit 密钥 → AES-GCM 加密/解密
  */
 
-const PBKDF2_ITERATIONS = 100000;
+const PBKDF2_ITERATIONS = 310000;
 const SALT_LENGTH = 16;
 const IV_LENGTH = 12;
 const MASTER_CHECK_MARKER = 'github-multilogin-ok';
